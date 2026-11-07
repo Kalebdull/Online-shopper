@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flip Finder</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Flip Finder</h1>
+    <span id="mode" class="badge">…</span>
+  </div>
+  <div class="meta">
+    <span id="tokens" title="Keepa tokens left">Tokens: –</span>
+    <span id="lastScan">Last scan: –</span>
+    <span id="nextScan"></span>
+    <button id="scanBtn" class="primary">Scan now</button>
+  </div>
+</header>
+
+<main>
+  <section class="kpis" id="kpis">
+    <div class="kpi"><div class="label">Active plays</div><div class="value" id="kPlays">–</div></div>
+    <div class="kpi"><div class="label">Avg ROI</div><div class="value" id="kRoi">–</div></div>
+    <div class="kpi"><div class="label">Profit if 1 of each sells</div><div class="value" id="kProfit">–</div></div>
+    <div class="kpi"><div class="label">Est. monthly profit potential</div><div class="value" id="kMonthly">–</div></div>
+    <div class="kpi"><div class="label">Products checked</div><div class="value" id="kChecked">–</div></div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button data-tab="plays" class="active">Top plays</button>
+    <button data-tab="leads">Check retail leads</button>
+    <button data-tab="log">Scan log</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+
+  <section id="tab-plays" class="tab active">
+    <div class="filters">
+      <label>Sort <select id="fSort">
+        <option value="score">Score</option><option value="profit">Profit</option>
+        <option value="roi">ROI</option><option value="monthly">Monthly potential</option>
+        <option value="recent">Most recent</option></select></label>
+      <label>Source <select id="fSource"><option value="">All</option>
+        <option value="deals">Keepa deals</option><option value="leads">My leads</option></select></label>
+      <label>Status <select id="fStatus"><option value="">Active</option><option value="new">New</option>
+        <option value="watching">Watching</option><option value="bought">Bought</option>
+        <option value="dismissed">Dismissed</option></select></label>
+      <label class="check"><input type="checkbox" id="fAll"> Include rejected</label>
+    </div>
+    <div class="layout">
+      <div class="table-wrap">
+        <table id="playsTable">
+          <thead><tr>
+            <th></th><th>Product</th><th class="num">Score</th><th class="num">Buy</th><th class="num">Sell</th>
+            <th class="num">Profit</th><th class="num">ROI</th><th class="num">Rank</th><th class="num">Sold/mo</th>
+            <th class="num">Sellers</th><th>Risk</th><th>Status</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="emptyMsg" class="empty" hidden>No plays yet. Hit <b>Scan now</b>, or loosen filters in Settings.</p>
+      </div>
+      <aside class="side">
+        <div class="card" id="detail"><p class="muted">Select a play to see its fee breakdown and price history.</p></div>
+        <div class="card"><h3>Plays by category</h3><div id="catChart"></div></div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="tab-leads" class="tab">
+    <div class="card">
+      <h3>Check items you found in stores or online</h3>
+      <p class="muted">Paste a CSV with columns <code>code,cost,store,url</code>. The code can be a UPC, an EAN or an ASIN.
+        Each lead costs about 1–3 Keepa tokens.</p>
+      <textarea id="leadCsv" rows="8">code,cost,store,url
+</textarea>
+      <div class="row"><button id="leadBtn" class="primary">Check leads</button><span id="leadMsg" class="muted"></span></div>
+    </div>
+    <div class="table-wrap"><table id="leadTable"><thead><tr>
+      <th>Code</th><th>Product</th><th class="num">Cost</th><th class="num">Sell</th><th class="num">Profit</th>
+      <th class="num">ROI</th><th class="num">Score</th><th>Verdict</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="tab-log" class="tab">
+    <div class="table-wrap"><table id="logTable"><thead><tr>
+      <th>#</th><th>Source</th><th>Started</th><th>Status</th><th class="num">Checked</th><th class="num">Plays</th>
+      <th class="num">Tokens left</th><th>Message</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="tab-settings" class="tab">
+    <form id="settingsForm" class="card settings"></form>
+  </section>
+</main>
+<div id="tooltip" class="tooltip" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
