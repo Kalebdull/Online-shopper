@@ -5,7 +5,8 @@ import json
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="arbitrage")
-    ap.add_argument("cmd", nargs="?", default="serve", choices=["serve", "scan", "tokens"])
+    ap.add_argument("cmd", nargs="?", default="serve", choices=["serve", "scan", "tokens", "export"])
+    ap.add_argument("--out", default="data/export")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
     a = ap.parse_args()
@@ -17,6 +18,10 @@ def main() -> None:
     from .db import DB
     from .scanner import Scanner
     sc = Scanner(DB(config.DB_PATH))
+    if a.cmd == "export":
+        from .export import export
+        print(json.dumps(export(sc.db, a.out), indent=2))
+        return
     if a.cmd == "tokens":
         print(json.dumps(sc.tokens(), indent=2))
     else:
