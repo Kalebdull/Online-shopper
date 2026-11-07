@@ -25,13 +25,14 @@ def make_client():
     return KeepaClient(config.KEEPA_API_KEY, config.KEEPA_DOMAIN)
 
 
-def deal_selection(s, page: int = 0, price_type: int = AMAZON) -> dict:
+def deal_selection(s, page: int = 0, price_type: int = AMAZON, sort: int | None = None,
+                   window: int | None = None) -> dict:
     """Keepa /deal query: items whose price dropped vs. their 90-day average."""
     sel = {
         "page": page,
         "domainId": config.KEEPA_DOMAIN,
         "priceTypes": [price_type],
-        "dateRange": s.deal_window,             # 0=vs last day, 1=week, 2=month, 3=90 days
+        "dateRange": s.deal_window if window is None else window,             # 0=vs last day, 1=week, 2=month, 3=90 days
         "deltaPercentRange": [s.min_drop_percent, 95],
         "currentRange": [int(s.min_buy_price * 100), int(s.max_buy_price * 100)],
         "salesRankRange": [1, s.max_sales_rank],
@@ -39,7 +40,7 @@ def deal_selection(s, page: int = 0, price_type: int = AMAZON) -> dict:
         "isRangeEnabled": True,
         "filterErotic": True,
         "hasReviews": True,
-        "sortType": s.deal_sort,                # 3 = best sellers first, 4 = biggest drop %, 1 = newest
+        "sortType": s.deal_sort if sort is None else sort,               # 3 = best sellers first, 4 = biggest drop %, 1 = newest
     }
     if s.include_categories:
         sel["includeCategories"] = s.include_categories
@@ -95,22 +96,35 @@ class Scanner:
             candidates: dict[str, tuple[float, int]] = {}
             skipped: Counter = Counter()
             deals_seen = 0
-            page_budget = budget * 0.35                 # deal pages are the cheap part
-            for page in range(s.max_deal_pages):
-                for price_type in types:
-                    if spent + DEAL_PAGE_COST > page_budget:
+            def can_buy_page() -> bool:
+                # Keep paging while the rest of the budget still covers checking every candidate.
+                need = len(candidates) * (QUICK_COST + 0.15 * FULL_COST) + 10
+                return spent + DEAL_PAGE_COST + need <= budget
+            # Several deal searches, so leftover tokens find more candidates instead of expiring.
+            searches = [(s.deal_sort, s.deal_window), (1, 0), (4, 1), (3, 2), (3, 0)]
+            searches = list(dict.fromkeys(searches))
+            enough = False
+            for sort, window in searches:
+                for page in range(s.max_deal_pages):
+                    got_any = False
+                    for price_type in types:
+                        if not can_buy_page():
+                            break
+                        deals = client.deals(deal_selection(s, page, price_type, sort, window))
+                        spent += DEAL_PAGE_COST
+                        deals_seen += len(deals)
+                        got_any = got_any or bool(deals)
+                        for d in deals:
+                            score, why = prefilter(d, price_type, s)
+                            if score is None:
+                                skipped[why] += 1
+                            elif d["asin"] not in candidates or candidates[d["asin"]][0] < score:
+                                candidates[d["asin"]] = (score, price_type)
+                    enough = len(candidates) >= plan_quick_checks(budget - spent, 10**6)
+                    if enough or not got_any or not can_buy_page():
                         break
-                    deals = client.deals(deal_selection(s, page, price_type))
-                    spent += DEAL_PAGE_COST
-                    deals_seen += len(deals)
-                    for d in deals:
-                        score, why = prefilter(d, price_type, s)
-                        if score is None:
-                            skipped[why] += 1
-                        elif d["asin"] not in candidates or candidates[d["asin"]][0] < score:
-                            candidates[d["asin"]] = (score, price_type)
-                if len(candidates) >= plan_quick_checks(budget - spent, 10**6):
-                    break                                # enough to fill the budget
+                if enough or not can_buy_page():
+                    break
             ranked = sorted(candidates.items(), key=lambda kv: -kv[1][0])
 
             # 3) quick check without buy box data (1 token each)
