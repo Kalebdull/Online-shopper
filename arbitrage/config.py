@@ -54,15 +54,43 @@ class Settings:
     max_oos_sales_share: float = 0.10  # "sales" while nothing was for sale = rank isn't this item's
     max_price_swing: float = 1.6     # 75th/25th percentile price ratio; above = no stable price
     max_dip_days: int = 14           # low price lasting longer than this = new normal, not a dip
+    max_amazon_bb_share: float = 70.0  # % of time Amazon wins the buy box; above = you rarely sell
+    require_amazon_sales_for_media: bool = True  # books/music/movies share ranks across editions
     allow_variations: bool = False   # size/color variations share sales data -> unverifiable
 
     # --- deal scan (Keepa /deal) ---
     min_drop_percent: int = 25       # price must have dropped at least this much...
     deal_window: int = 1             # ...vs its average over: 0=last day (fresh drops), 1=week, 2=month, 3=90 days
     deal_price_types: list[int] = field(default_factory=lambda: [0, 1])  # 0=Amazon, 1=3rd-party new
-    include_categories: list[int] = field(default_factory=list)       # Keepa root category ids; empty=all
+    # Keepa root category ids to search; empty = all. Default: categories that flip well.
+    include_categories: list[int] = field(default_factory=lambda: [
+        165793011,   # Toys & Games
+        1055398,     # Home & Kitchen
+        3760901,     # Health & Household
+        3760911,     # Beauty & Personal Care
+        16310101,    # Grocery & Gourmet Food
+        172282,      # Electronics
+        468642,      # Video Games
+        1064954,     # Office Products
+        228013,      # Tools & Home Improvement
+        2619533011,  # Pet Supplies
+        165796011,   # Baby
+        15684181,    # Automotive
+        3375251,     # Sports & Outdoors
+        2335752011,  # Cell Phones & Accessories
+        16310091,    # Industrial & Scientific
+        2972638011,  # Patio, Lawn & Garden
+        283155,      # Books
+        2625373011,  # Movies & TV
+        5174,        # CDs & Vinyl
+        11091801,    # Musical Instruments
+        229534,      # Software
+    ])
     exclude_categories: list[int] = field(default_factory=lambda: [7141123011])  # Clothing, Shoes & Jewelry
-    max_products_per_scan: int = 100  # caps Keepa token spend (~1-3 tokens per product)
+    max_tokens_per_scan: int = 0     # 0 = use every token available (refills are wasted at the cap)
+    max_deal_pages: int = 30         # per price type; 5 tokens per 150 deals
+    deal_sort: int = 3               # 3 = best sellers first, 4 = biggest drop %, 1 = newest
+    max_products_per_scan: int = 1000  # cap on quick checks
     use_buybox: bool = True          # +2 tokens/product, better resale estimate
 
     # --- cost model ---
@@ -75,7 +103,7 @@ class Settings:
 
     # --- automation ---
     auto_scan: bool = True
-    scan_interval_minutes: int = 30
+    scan_interval_minutes: int = 15  # Keepa tokens expire after 60 min: spend them often
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":

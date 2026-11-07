@@ -62,6 +62,8 @@ exists because a real scan produced a fake "play" that it catches:
 | Normal price swing ≤ 1.6x | A few sellers' wild asking prices, not a market |
 | No size/color variations, no clothing | Sales data shared across the whole family |
 | Drop < 85% | Pricing errors that get cancelled |
+| Amazon holds the buy box ≤ 70% of the time | You'd rarely get the sale once Amazon restocks |
+| Media must show Amazon's own "bought in past month" count | CD/DVD/book editions sharing one sales rank |
 
 Each play shows its proof, for example "Sold 74x at $45+ in the last 180 days; held that
 price 86% of the time". Rejected items keep the reason they failed (tick "Show rejected").
@@ -78,16 +80,28 @@ Expect few plays. Real flips are rare and sell out fast, so scans run every 30 m
   Seller Central before buying.
 
 ## Keepa token use
-About 5 tokens per deal page plus about 3 tokens per product (1 with "Use buy box data"
-off). A default scan of 100 products costs about 320 tokens. Every 30 minutes that fits
-a 20 tokens/minute refill. Tune
-`max_products_per_scan` and the interval to fit your plan's refill rate.
+
+Your plan adds tokens every minute (20/min on the entry plan). The bucket holds 60
+minutes' worth, and **unused tokens expire after 60 minutes**, so the scanner spends
+everything available on each run and runs every 15 minutes.
+
+Each scan:
+1. Pulls deal pages, 5 tokens per 150 deals, best sellers first, flip-friendly categories only.
+2. Pre-filters them for free using the deal record: variations, clothing, renewed items,
+   Amazon's own brands, slow sellers, weeks-old drops, likely pricing errors, and anything
+   that can't reach your profit target even on a rough estimate.
+3. Quick-checks the best candidates without buy box data (1 token each).
+4. Fully checks only the survivors with buy box data (3 tokens each).
+
+A live run scanned 1,950 deals for about 152 tokens. Checking the same deals directly
+would have cost about 6,000.
 
 ## Layout
 ```
 arbitrage/
   keepa.py     Keepa API client
   profit.py    parsing, resale estimate, fees, scoring, flags
+  planner.py   token budget, free deal pre-filter and ranking
   scanner.py   deal scan, lead checks, scheduler
   db.py        SQLite storage (data/arbitrage.db)
   app.py       FastAPI JSON API + dashboard

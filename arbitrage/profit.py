@@ -10,6 +10,8 @@ from .keepa import (AMAZON, BUY_BOX_SHIPPING, COUNT_NEW, NEW, NEW_FBA, NEW_FBM_S
 import re
 
 APPAREL_ROOTS = {"Clothing, Shoes & Jewelry"}   # sizes/colors share sales data
+# Editions/formats of the same title often share one sales rank on Amazon.
+MEDIA_ROOTS = {"Books", "CDs & Vinyl", "Movies & TV", "Video Games", "Kindle Store", "Digital Music"}
 SIZE_IN_TITLE = re.compile(r",\s*(X{0,3}-?(Small|Medium|Large)|XS|XXL|\d{1,2}(\.5)?\s*(W|M|Wide|US)?|Size\s+\S+)\s*(,|$)", re.I)
 
 DAY = 86400
@@ -205,6 +207,7 @@ def parse_product(p: dict) -> dict:
     if offers is None and (stats.get("offerCountFBA") is not None or stats.get("offerCountFBM") is not None):
         offers = max(stats.get("offerCountFBA") or 0, 0) + max(stats.get("offerCountFBM") or 0, 0)
 
+    amazon_monthly = p.get("monthlySold") if (p.get("monthlySold") or 0) > 0 else None
     monthly = p.get("monthlySold")
     if not monthly or monthly < 0:
         monthly = stats.get("salesRankDrops30") if (stats.get("salesRankDrops30") or -1) >= 0 else None
@@ -267,6 +270,8 @@ def parse_product(p: dict) -> dict:
         "buybox_is_amazon": bool(stats.get("buyBoxIsAmazon")),
         "amazon_bb_share": amazon_share,
         "is_variation": is_variation,
+        "is_media": root_name in MEDIA_ROOTS,
+        "amazon_monthly_sold": amazon_monthly,
         "hazmat": bool(p.get("hazardousMaterials")),
         "adult": bool(p.get("isAdultProduct")),
         "history": price_history(p),
@@ -396,6 +401,11 @@ def evaluate(info: dict, buy_price: float | None, s: Settings) -> dict:
         rejects.append(f"Only {proof['sales_at_resale']} sales at ${sell_basis * 0.95:.2f}+ in 180 days")
     if proof["time_at_resale"] < s.min_time_at_resale:
         rejects.append(f"Held ${sell_basis * 0.95:.2f}+ only {proof['time_at_resale']:.0%} of the time")
+    if share is not None and share > s.max_amazon_bb_share:
+        rejects.append(f"Amazon holds the buy box {share:.0f}% of the time: you'd rarely get the sale")
+    if info.get("is_media") and not info.get("amazon_monthly_sold") and s.require_amazon_sales_for_media:
+        rejects.append("Media item without Amazon's own 'bought in past month' count: "
+                       "rank may belong to another edition")
     if (info.get("oos_sales_share") or 0) > s.max_oos_sales_share:
         rejects.append(f"{info['oos_sales_share']:.0%} of 'sales' happened while out of stock: "
                        "rank belongs to another edition")

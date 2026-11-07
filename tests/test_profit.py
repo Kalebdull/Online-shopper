@@ -134,3 +134,15 @@ def test_apparel_counts_as_variation():
     raw = dict(SAMPLE[0], title="Some Shirt, Black, XX-Large", parentAsin=None, variations=None,
                categoryTree=[{"catId": 7141123011, "name": "Clothing, Shoes & Jewelry"}])
     assert parse_product(raw)["is_variation"]
+
+
+def test_rejects_amazon_dominated_buy_box():
+    p = evaluate(base_info(amazon_bb_share=97.0), 20.0, Settings())
+    assert any("rarely get the sale" in r for r in p["rejects"])
+
+
+def test_media_needs_amazons_own_sales_count():
+    p = evaluate(base_info(is_media=True, amazon_monthly_sold=None), 20.0, Settings())
+    assert any("another edition" in r for r in p["rejects"])
+    p = evaluate(base_info(is_media=True, amazon_monthly_sold=200), 20.0, Settings())
+    assert p["passes"]

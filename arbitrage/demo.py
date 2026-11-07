@@ -42,8 +42,25 @@ class DemoKeepa:
         return {"tokensLeft": self.tokens_left, "refillIn": self.refill_in_ms, "refillRate": 20}
 
     def deals(self, selection: dict) -> list[dict]:
+        """Deal records shaped like Keepa's: current/avg/currentSince/salesRankDrops."""
         self.tokens_left -= 5
-        return [{"asin": _asin(self.rng)} for _ in range(40)]
+        if selection.get("page", 0) > 1:
+            return []
+        out = []
+        now_k = int(time.time() / 60) - KEEPA_EPOCH_MINUTES
+        for _ in range(60):
+            asin = _asin(self.rng)
+            p = self._made.setdefault(asin, self._fake(asin))
+            st = p["stats"]
+            drops = st["salesRankDrops30"] or 0
+            out.append({
+                "asin": asin, "title": p["title"], "rootCat": p["rootCategory"], "parentAsin": None,
+                "current": st["current"],
+                "avg": [st["avg30"], st["avg30"], st["avg30"], st["avg90"]],
+                "currentSince": [now_k - self.rng.randint(60, 6 * 1440)] * 35,
+                "salesRankDrops30": drops, "salesRankDrops90": drops * 3, "salesRankDrops180": drops * 6,
+            })
+        return out
 
     def products(self, asins=(), codes=(), buybox: bool = True, stats_days: int = 90) -> list[dict]:
         out = []

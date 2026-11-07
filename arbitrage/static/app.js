@@ -223,7 +223,13 @@ const SETTINGS_UI = [
     ["max_price_swing", "Max normal-price swing (1.6 = 60%)"],
     ["max_oos_sales_share", "Max share of 'sales' while out of stock"],
     ["max_drop_percent", "Drops deeper than this % are pricing errors"],
+    ["max_amazon_bb_share", "Max % of time Amazon holds the buy box"],
+    ["require_amazon_sales_for_media", "Media must show Amazon's own monthly sales count"],
     ["allow_variations", "Allow size/color variations (unverifiable)"]]],
+  ["Token use", [
+    ["max_tokens_per_scan", "Max tokens per scan (0 = all available)"],
+    ["max_deal_pages", "Max deal pages per source (5 tokens each)"],
+    ["deal_sort", "Deal order (3 = best sellers, 4 = biggest drop, 1 = newest)"]]],
   ["Keepa deal scan", [
     ["min_drop_percent", "Min price drop (%)"],
     ["deal_window", "Drop measured vs (0 = last day, 1 = week, 2 = month, 3 = 90 days)"],

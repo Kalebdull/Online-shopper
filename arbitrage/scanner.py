@@ -6,11 +6,14 @@ import io
 import logging
 import threading
 import time
+from collections import Counter
 
 from . import config
 from .db import DB
 from .demo import DemoKeepa
 from .keepa import AMAZON, NEW, KeepaClient
+from .planner import (DEAL_PAGE_COST, FULL_COST, HARD_REJECTS, QUICK_COST, plan_quick_checks,
+                      prefilter)
 from .profit import evaluate, parse_product
 
 log = logging.getLogger("arbitrage")
@@ -36,7 +39,7 @@ def deal_selection(s, page: int = 0, price_type: int = AMAZON) -> dict:
         "isRangeEnabled": True,
         "filterErotic": True,
         "hasReviews": True,
-        "sortType": 4,                          # sort by percentage delta
+        "sortType": s.deal_sort,                # 3 = best sellers first, 4 = biggest drop %, 1 = newest
     }
     if s.include_categories:
         sel["includeCategories"] = s.include_categories
@@ -70,6 +73,7 @@ class Scanner:
 
     # --- automatic deal scan -------------------------------------------------
     def run_deal_scan(self) -> dict:
+        """Spend the available Keepa tokens where they're most likely to find a real flip."""
         if not self.lock.acquire(blocking=False):
             return {"status": "busy"}
         self.running = True
@@ -78,41 +82,87 @@ class Scanner:
         checked = found = 0
         try:
             s = self.db.get_settings()
+            tokens = (client.token_status() or {}).get("tokensLeft") or 0      # free call
+            budget = min(tokens, s.max_tokens_per_scan) if s.max_tokens_per_scan > 0 else tokens
+            if budget < DEAL_PAGE_COST + 10:
+                msg = f"Skipped: only {tokens} Keepa tokens available"
+                self.db.finish_scan(scan_id, "ok", 0, 0, tokens, msg)
+                return {"status": "skipped", "message": msg}
+            spent = 0
             types = [t for t in (s.deal_price_types or [AMAZON]) if t in (AMAZON, NEW)] or [AMAZON]
-            budget = max(1, s.max_products_per_scan // len(types))
-            source_of: dict[str, int] = {}          # asin -> price type it was found under
-            for price_type in types:
-                found_here, page = 0, 0
-                while found_here < budget and page < 5:
-                    deals = client.deals(deal_selection(s, page, price_type))
-                    if not deals:
-                        break
-                    for d in deals:
-                        # Don't spend product tokens on items that barely sell.
-                        drops90 = d.get("salesRankDrops90")
-                        if drops90 is not None and 0 <= drops90 < s.min_sales_at_resale:
-                            continue
-                        if d.get("rootCat") in s.exclude_categories:
-                            continue
-                        if d.get("asin") and d["asin"] not in source_of and found_here < budget:
-                            source_of[d["asin"]] = price_type
-                            found_here += 1
-                    page += 1
 
-            for product in client.products(asins=list(source_of), buybox=s.use_buybox):
+            # 1) many cheap deal pages, 2) free pre-filter + ranking
+            candidates: dict[str, tuple[float, int]] = {}
+            skipped: Counter = Counter()
+            deals_seen = 0
+            page_budget = budget * 0.35                 # deal pages are the cheap part
+            for page in range(s.max_deal_pages):
+                for price_type in types:
+                    if spent + DEAL_PAGE_COST > page_budget:
+                        break
+                    deals = client.deals(deal_selection(s, page, price_type))
+                    spent += DEAL_PAGE_COST
+                    deals_seen += len(deals)
+                    for d in deals:
+                        score, why = prefilter(d, price_type, s)
+                        if score is None:
+                            skipped[why] += 1
+                        elif d["asin"] not in candidates or candidates[d["asin"]][0] < score:
+                            candidates[d["asin"]] = (score, price_type)
+                if len(candidates) >= plan_quick_checks(budget - spent, 10**6):
+                    break                                # enough to fill the budget
+            ranked = sorted(candidates.items(), key=lambda kv: -kv[1][0])
+
+            # 3) quick check without buy box data (1 token each)
+            n_quick = min(plan_quick_checks(budget - spent, len(ranked)), s.max_products_per_scan)
+            quick_asins = [a for a, _ in ranked[:n_quick]]
+            survivors: list[str] = []
+            quick_plays: dict[str, tuple[dict, dict]] = {}
+            for product in client.products(asins=quick_asins, buybox=False):
+                spent += QUICK_COST
                 info = parse_product(product)
-                price_type = source_of.get(info["asin"], AMAZON)
-                self.db.save_raw(product, "deals", price_type=price_type)
-                buy = info["amazon_price"] if price_type == AMAZON else info["third_party_cost"]
+                pt = candidates[info["asin"]][1]
+                buy = info["amazon_price"] if pt == AMAZON else info["third_party_cost"]
                 play = evaluate(info, buy, s)
+                hard = any(h in r for r in play.get("rejects", []) for h in HARD_REJECTS)
+                if not hard and (play.get("profit") or -1) >= s.min_profit * 0.5:
+                    survivors.append(info["asin"])
+                quick_plays[info["asin"]] = (product, play)
+
+            # 4) full check with buy box data, survivors only
+            n_full = min(len(survivors), max(0, budget - spent) // FULL_COST)
+            full_checked = set()
+            if n_full and s.use_buybox:
+                for product in client.products(asins=survivors[:n_full], buybox=True):
+                    spent += FULL_COST
+                    quick_plays[product["asin"]] = (product, None)
+                    full_checked.add(product["asin"])
+
+            for asin, (product, play) in quick_plays.items():
+                pt = candidates[asin][1]
+                if play is None or asin in full_checked:
+                    info = parse_product(product)
+                    buy = info["amazon_price"] if pt == AMAZON else info["third_party_cost"]
+                    play = evaluate(info, buy, s)
+                elif asin in survivors:
+                    # Passed the quick check but no tokens left for the full one: don't call it verified.
+                    play = {**play, "passes": False, "verified": False,
+                            "rejects": play.get("rejects", []) + ["Not fully checked yet (out of tokens)"]}
+                self.db.save_raw(product, "deals", price_type=pt)
+                self.db.upsert_play(play, "deals", scan_id, buy_url=buy_url(asin),
+                                    store="Amazon" if pt == AMAZON else "Amazon 3rd-party seller")
                 checked += 1
                 found += int(play["passes"])
-                self.db.upsert_play(play, "deals", scan_id, buy_url=buy_url(info["asin"]),
-                                    store="Amazon" if price_type == AMAZON else "Amazon 3rd-party seller")
+
             self.last_tokens = client.tokens_left
-            msg = f"{found} plays from {checked} products"
+            top_skips = ", ".join(f"{n} {why}" for why, n in skipped.most_common(4))
+            msg = (f"{found} verified. {deals_seen} deals scanned, {len(candidates)} worth checking "
+                   f"({top_skips} skipped free); {len(quick_asins)} quick-checked, "
+                   f"{len(full_checked)} fully checked; ~{spent} tokens")
             self.db.finish_scan(scan_id, "ok", checked, found, client.tokens_left, msg)
-            return {"status": "ok", "checked": checked, "found": found, "scan_id": scan_id}
+            return {"status": "ok", "checked": checked, "found": found, "scan_id": scan_id,
+                    "deals_seen": deals_seen, "candidates": len(candidates), "quick": len(quick_asins),
+                    "full": len(full_checked), "tokens_spent": spent, "message": msg}
         except Exception as e:  # noqa: BLE001
             log.exception("deal scan failed")
             self.db.finish_scan(scan_id, "error", checked, found, client.tokens_left, str(e))
