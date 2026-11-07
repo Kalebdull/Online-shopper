@@ -26,22 +26,21 @@ python -m pytest             # tests
 
 ## Where plays come from
 
-1. **Keepa deals (automatic).** Every `scan_interval_minutes` (default 2h) it asks Keepa
-   for products whose price dropped at least `min_drop_percent` below the 90-day
-   average. It pulls full product data and runs each one through the profit model.
-   Default source is Amazon's own price (Amazon-to-Amazon flips). Set
-   "Buy from" to `1` to target 3rd-party sellers instead.
+1. **Keepa deals (automatic).** Every 30 minutes it asks Keepa for products whose price
+   dropped at least 25% in the last week, from Amazon itself and from third-party sellers,
+   skipping clothing. It pulls full product data and runs each one through the profit
+   model and the verification rules below.
 2. **Your retail leads (manual).** Found something at Walmart, Target, TJ Maxx or a
    clearance site? Paste `code,cost,store,url` rows in **Check retail leads**. The code
    can be a UPC, EAN or ASIN. It looks each one up on Amazon and tells you buy or pass.
 
 ## How profit is estimated (and why it's conservative)
 
-- **Resale price = what it actually sold at.** Keepa's averages are often inflated by
-  "regular" prices nobody pays (for example, Amazon shows $60 for months, then clears at $13).
-  So the app finds each sales-rank drop in the last 90 days (≈ a sale) and takes the
-  median buy-box price at those moments. It then uses the lowest of that, the 90-day
-  median and the 30/90-day averages, minus a 5% haircut.
+- **Resale price** is the lowest of: the price the item sat at or above 75% of the time
+  over 180 days (ignoring the current dip), its 90- and 180-day buy-box averages, the
+  median price at real sales, and today's buy box when other sellers hold it above your
+  cost. Then a 5% haircut. Keepa's averages alone are often inflated by "regular" prices
+  nobody pays.
 - **Fees:** Amazon referral % and FBA pick & pack fee straight from Keepa (estimated by
   weight if missing), plus inbound shipping per lb, prep, storage and sales tax.
   All costs are adjustable in **Settings**.
@@ -74,9 +73,7 @@ Expect few plays. Real flips are rare and sell out fast, so scans run every 30 m
 ### Risk flags to read before buying
 - **Amazon wins buy box X%**: you'll be competing with Amazon if it restocks.
 - **Extreme drop**: possible pricing glitch, or Amazon liquidating. Check the Keepa chart.
-- **Variation: sales data shared**: rank/sales are for the whole size/color family,
-  so your exact size may sell much slower.
-- **Few observed sales**: not enough history to know the real resale price.
+- **Amazon's cheap offer isn't winning the buy box**: often means it's backordered.
 - **Can I sell it?** link: brand/category gating isn't visible to Keepa. Check in
   Seller Central before buying.
 
