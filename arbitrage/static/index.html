@@ -22,7 +22,7 @@
 
 <main>
   <section class="kpis" id="kpis">
-    <div class="kpi"><div class="label">Active plays</div><div class="value" id="kPlays">–</div></div>
+    <div class="kpi"><div class="label">Verified plays</div><div class="value" id="kPlays">–</div></div>
     <div class="kpi"><div class="label">Avg ROI</div><div class="value" id="kRoi">–</div></div>
     <div class="kpi"><div class="label">Profit if 1 of each sells</div><div class="value" id="kProfit">–</div></div>
     <div class="kpi"><div class="label">Est. monthly profit potential</div><div class="value" id="kMonthly">–</div></div>
@@ -47,7 +47,7 @@
       <label>Status <select id="fStatus"><option value="">Active</option><option value="new">New</option>
         <option value="watching">Watching</option><option value="bought">Bought</option>
         <option value="dismissed">Dismissed</option></select></label>
-      <label class="check"><input type="checkbox" id="fAll"> Include rejected</label>
+      <label class="check"><input type="checkbox" id="fAll"> Show rejected (with reasons)</label>
     </div>
     <div class="layout">
       <div class="table-wrap">
@@ -59,7 +59,7 @@
           </tr></thead>
           <tbody></tbody>
         </table>
-        <p id="emptyMsg" class="empty" hidden>No plays yet. Hit <b>Scan now</b>, or loosen filters in Settings.</p>
+        <p id="emptyMsg" class="empty" hidden>No verified flips right now. Real ones are rare and sell out fast, so the scanner keeps checking. Tick <b>Show rejected</b> to see what it checked and why each failed.</p>
       </div>
       <aside class="side">
         <div class="card" id="detail"><p class="muted">Select a play to see its fee breakdown and price history.</p></div>

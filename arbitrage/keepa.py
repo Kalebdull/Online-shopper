@@ -69,7 +69,7 @@ class KeepaClient:
         return (data.get("deals") or {}).get("dr") or []
 
     def products(self, asins: Iterable[str] = (), codes: Iterable[str] = (),
-                 buybox: bool = True, stats_days: int = 90) -> list[dict]:
+                 buybox: bool = True, stats_days: int = 180) -> list[dict]:
         """Product lookup by ASIN or by UPC/EAN code (100 per request)."""
         asins, codes = list(asins), list(codes)
         out: list[dict] = []

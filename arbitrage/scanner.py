@@ -22,13 +22,13 @@ def make_client():
     return KeepaClient(config.KEEPA_API_KEY, config.KEEPA_DOMAIN)
 
 
-def deal_selection(s, page: int = 0) -> dict:
+def deal_selection(s, page: int = 0, price_type: int = AMAZON) -> dict:
     """Keepa /deal query: items whose price dropped vs. their 90-day average."""
     sel = {
         "page": page,
         "domainId": config.KEEPA_DOMAIN,
-        "priceTypes": s.deal_price_types[:1] or [AMAZON],
-        "dateRange": 3,                         # compare against 90-day average
+        "priceTypes": [price_type],
+        "dateRange": s.deal_window,             # 0=vs last day, 1=week, 2=month, 3=90 days
         "deltaPercentRange": [s.min_drop_percent, 95],
         "currentRange": [int(s.min_buy_price * 100), int(s.max_buy_price * 100)],
         "salesRankRange": [1, s.max_sales_rank],
@@ -78,29 +78,37 @@ class Scanner:
         checked = found = 0
         try:
             s = self.db.get_settings()
-            asins: list[str] = []
-            page = 0
-            while len(asins) < s.max_products_per_scan and page < 5:
-                deals = client.deals(deal_selection(s, page))
-                if not deals:
-                    break
-                for d in deals:
-                    if d.get("asin") and d["asin"] not in asins:
-                        asins.append(d["asin"])
-                page += 1
-            asins = asins[: s.max_products_per_scan]
+            types = [t for t in (s.deal_price_types or [AMAZON]) if t in (AMAZON, NEW)] or [AMAZON]
+            budget = max(1, s.max_products_per_scan // len(types))
+            source_of: dict[str, int] = {}          # asin -> price type it was found under
+            for price_type in types:
+                found_here, page = 0, 0
+                while found_here < budget and page < 5:
+                    deals = client.deals(deal_selection(s, page, price_type))
+                    if not deals:
+                        break
+                    for d in deals:
+                        # Don't spend product tokens on items that barely sell.
+                        drops90 = d.get("salesRankDrops90")
+                        if drops90 is not None and 0 <= drops90 < s.min_sales_at_resale:
+                            continue
+                        if d.get("rootCat") in s.exclude_categories:
+                            continue
+                        if d.get("asin") and d["asin"] not in source_of and found_here < budget:
+                            source_of[d["asin"]] = price_type
+                            found_here += 1
+                    page += 1
 
-            price_idx = (s.deal_price_types or [AMAZON])[0]
-            for product in client.products(asins=asins, buybox=s.use_buybox):
+            for product in client.products(asins=list(source_of), buybox=s.use_buybox):
                 info = parse_product(product)
-                buy = info["amazon_price"] if price_idx == AMAZON else info["new_price"]
-                if price_idx not in (AMAZON, NEW):
-                    buy = info["new_price"]
+                price_type = source_of.get(info["asin"], AMAZON)
+                self.db.save_raw(product, "deals", price_type=price_type)
+                buy = info["amazon_price"] if price_type == AMAZON else info["third_party_cost"]
                 play = evaluate(info, buy, s)
                 checked += 1
                 found += int(play["passes"])
                 self.db.upsert_play(play, "deals", scan_id, buy_url=buy_url(info["asin"]),
-                                    store="Amazon" if price_idx == AMAZON else "Amazon 3P")
+                                    store="Amazon" if price_type == AMAZON else "Amazon 3rd-party seller")
             self.last_tokens = client.tokens_left
             msg = f"{found} plays from {checked} products"
             self.db.finish_scan(scan_id, "ok", checked, found, client.tokens_left, msg)
@@ -140,6 +148,9 @@ class Scanner:
                 plays = [evaluate(parse_product(p), cost, s) for p in products]
                 best = max(plays, key=lambda p: (p["passes"], p.get("profit", -1e9)))
                 best["lead_code"] = code
+                best_raw = next(p for p in products if p.get("asin") == best["asin"])
+                self.db.save_raw(best_raw, "leads", store=lead.get("store") or None,
+                                 buy_url=lead.get("url") or None, lead_cost=cost)
                 self.db.upsert_play(best, "leads", scan_id, buy_url=lead.get("url") or None,
                                     store=lead.get("store") or None)
                 results.append(best)
@@ -154,6 +165,26 @@ class Scanner:
             raise
         finally:
             client.close()
+
+
+    def rescore(self) -> dict:
+        """Re-evaluate cached Keepa data under the current settings. Costs no tokens."""
+        s = self.db.get_settings()
+        n = found = 0
+        for r in self.db.raw_products():
+            info = parse_product(r["data"])
+            if r["source"] == "leads":
+                buy, store, url = r["lead_cost"], r["store"], r["buy_url"]
+            else:
+                pt = r["price_type"] or AMAZON
+                buy = info["amazon_price"] if pt == AMAZON else info["third_party_cost"]
+                store = "Amazon" if pt == AMAZON else "Amazon 3rd-party seller"
+                url = buy_url(info["asin"])
+            play = evaluate(info, buy, s)
+            self.db.upsert_play(play, r["source"], None, buy_url=url, store=store)
+            n += 1
+            found += int(play["passes"])
+        return {"rescored": n, "verified": found}
 
 
 def parse_leads_csv(text: str) -> list[dict]:

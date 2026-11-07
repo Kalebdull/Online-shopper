@@ -117,7 +117,8 @@ function showDetail(p) {
       <span class="muted">Your cost${f.tax ? " incl. tax" : ""}</span><span>-${money((d.buy_price || 0) + (f.tax || 0))}</span>
       <span class="total">Profit / unit</span><span class="total ${d.profit > 0 ? "pos" : "neg"}">${money(d.profit)} · ${pct(d.roi)} ROI</span>
     </div>
-    <h3>Buy box price, last 90 days</h3>
+    ${d.proof ? `<p class="${d.verified ? "pos" : "muted"}">${d.verified ? "✓ Verified: " : ""}${esc(d.proof)}</p>` : ""}
+    <h3>Buy box price, last 180 days</h3>
     <div class="chart" id="histChart"></div>
     ${(d.flags || []).length ? `<div>${d.flags.map(x => `<span class="chip">${esc(x)}</span>`).join("")}</div>` : ""}
     ${(d.rejects || []).length ? `<div>${d.rejects.map(x => `<span class="chip bad">${esc(x)}</span>`).join("")}</div>` : ""}
@@ -214,8 +215,18 @@ const SETTINGS_UI = [
     ["max_sales_rank", "Max sales rank"], ["min_monthly_sold", "Min units sold / month"],
     ["min_buy_price", "Min buy price ($)"], ["max_buy_price", "Max buy price ($)"],
     ["max_offer_count", "Max competing sellers"], ["skip_hazmat_and_adult", "Skip hazmat & adult items"]]],
+  ["Proof it's a real flip", [
+    ["min_sales_at_resale", "Min sales at the resale price (last 180 days)"],
+    ["min_time_at_resale", "Min share of time at the resale price (0.4 = 40%)"],
+    ["min_history_days", "Min days of price history"],
+    ["max_dip_days", "Max days the low price has lasted"],
+    ["max_price_swing", "Max normal-price swing (1.6 = 60%)"],
+    ["max_oos_sales_share", "Max share of 'sales' while out of stock"],
+    ["max_drop_percent", "Drops deeper than this % are pricing errors"],
+    ["allow_variations", "Allow size/color variations (unverifiable)"]]],
   ["Keepa deal scan", [
-    ["min_drop_percent", "Min price drop vs 90-day avg (%)"],
+    ["min_drop_percent", "Min price drop (%)"],
+    ["deal_window", "Drop measured vs (0 = last day, 1 = week, 2 = month, 3 = 90 days)"],
     ["deal_price_types", "Buy from (0 = Amazon, 1 = lowest 3rd-party new)"],
     ["include_categories", "Only these Keepa category ids (comma separated)"],
     ["exclude_categories", "Exclude category ids"],

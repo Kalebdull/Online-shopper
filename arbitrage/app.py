@@ -93,6 +93,11 @@ def scan(background: BackgroundTasks):
     return {"status": "started"}
 
 
+@app.post("/api/rescore")
+def rescore():
+    return scanner.rescore()
+
+
 @app.get("/api/scans")
 def scans(limit: int = 30):
     return db.scans(limit)

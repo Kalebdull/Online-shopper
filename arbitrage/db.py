@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS plays (
     scan_id INTEGER,
     PRIMARY KEY (asin, source)
 );
+CREATE TABLE IF NOT EXISTS raw_products (
+    asin TEXT PRIMARY KEY, source TEXT, price_type INTEGER, store TEXT, buy_url TEXT,
+    lead_cost REAL, data TEXT NOT NULL, fetched_at REAL NOT NULL
+);
 CREATE INDEX IF NOT EXISTS plays_score ON plays(passes, score DESC);
 """
 
@@ -135,6 +139,18 @@ class DB:
             return False
         return self._exec(f"UPDATE plays SET {', '.join(sets)} WHERE asin=? AND source=?",
                           (*params, asin, source)).rowcount > 0
+
+    def save_raw(self, product: dict, source: str, price_type: int | None = None,
+                 store: str | None = None, buy_url: str | None = None, lead_cost: float | None = None) -> None:
+        self._exec("INSERT OR REPLACE INTO raw_products VALUES (?,?,?,?,?,?,?,?)",
+                   (product["asin"], source, price_type, store, buy_url, lead_cost,
+                    json.dumps(product, separators=(",", ":")), time.time()))
+
+    def raw_products(self) -> list[dict]:
+        rows = self._all("SELECT * FROM raw_products")
+        for r in rows:
+            r["data"] = json.loads(r["data"])
+        return rows
 
     def summary(self) -> dict:
         row = self._all("""SELECT COUNT(*) n, AVG(roi) avg_roi, SUM(profit) total_profit,

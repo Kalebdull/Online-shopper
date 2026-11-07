@@ -46,12 +46,23 @@ class Settings:
     max_offer_count: int = 40
     skip_hazmat_and_adult: bool = True
 
+    # --- verification: only show flips the data can prove ---
+    min_sales_at_resale: int = 4     # sales (rank drops) at >= resale price in last 180 days
+    min_time_at_resale: float = 0.4  # share of the last 180 days the price held at >= resale
+    min_history_days: int = 60       # need at least this much price history
+    max_drop_percent: int = 85       # deeper drops are usually pricing errors
+    max_oos_sales_share: float = 0.10  # "sales" while nothing was for sale = rank isn't this item's
+    max_price_swing: float = 1.6     # 75th/25th percentile price ratio; above = no stable price
+    max_dip_days: int = 14           # low price lasting longer than this = new normal, not a dip
+    allow_variations: bool = False   # size/color variations share sales data -> unverifiable
+
     # --- deal scan (Keepa /deal) ---
-    min_drop_percent: int = 25       # price must be this far below its 90-day average
-    deal_price_types: list[int] = field(default_factory=lambda: [0])  # 0=Amazon, 1=3rd-party new
+    min_drop_percent: int = 25       # price must have dropped at least this much...
+    deal_window: int = 1             # ...vs its average over: 0=last day (fresh drops), 1=week, 2=month, 3=90 days
+    deal_price_types: list[int] = field(default_factory=lambda: [0, 1])  # 0=Amazon, 1=3rd-party new
     include_categories: list[int] = field(default_factory=list)       # Keepa root category ids; empty=all
-    exclude_categories: list[int] = field(default_factory=list)
-    max_products_per_scan: int = 60  # caps Keepa token spend (~1-3 tokens per product)
+    exclude_categories: list[int] = field(default_factory=lambda: [7141123011])  # Clothing, Shoes & Jewelry
+    max_products_per_scan: int = 100  # caps Keepa token spend (~1-3 tokens per product)
     use_buybox: bool = True          # +2 tokens/product, better resale estimate
 
     # --- cost model ---
@@ -64,7 +75,7 @@ class Settings:
 
     # --- automation ---
     auto_scan: bool = True
-    scan_interval_minutes: int = 120
+    scan_interval_minutes: int = 30
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":

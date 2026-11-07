@@ -19,6 +19,8 @@ Other commands:
 ```bash
 python -m arbitrage scan     # one deal scan from the terminal, prints the top 10
 python -m arbitrage tokens   # check your Keepa token balance
+python -m arbitrage rescore  # re-check cached scans under new settings (no tokens)
+python -m arbitrage export   # write plays/scans as JSON (feeds the phone dashboard)
 python -m pytest             # tests
 ```
 
@@ -46,6 +48,29 @@ python -m pytest             # tests
 - **Score (0–100):** ROI, profit per unit, sales velocity, rank and competition,
   minus penalties for risk flags.
 
+## Verification: only real flips get through
+
+A deal only counts as **verified** when the Keepa history proves it. Each rule below
+exists because a real scan produced a fake "play" that it catches:
+
+| Rule (default) | Fake it catches |
+|---|---|
+| ≥ 4 sales at the resale price in 180 days | Inflated "regular" prices nobody ever paid |
+| Held the resale price ≥ 40% of the time | A brief price spike used as the resale price |
+| Low price is < 14 days old | A markdown that has become the new normal (textbook at $17 for 26 days) |
+| Resale capped by today's buy box | Other sellers already at $50 while history says $104 |
+| < 10% of "sales" while out of stock | Sales rank shared with another edition (import DVD) |
+| Normal price swing ≤ 1.6x | A few sellers' wild asking prices, not a market |
+| No size/color variations, no clothing | Sales data shared across the whole family |
+| Drop < 85% | Pricing errors that get cancelled |
+
+Each play shows its proof, for example "Sold 74x at $45+ in the last 180 days; held that
+price 86% of the time". Rejected items keep the reason they failed (tick "Show rejected").
+All rules are in **Settings**. After changing them, `python -m arbitrage rescore`
+re-checks the last scans without spending Keepa tokens.
+
+Expect few plays. Real flips are rare and sell out fast, so scans run every 30 minutes.
+
 ### Risk flags to read before buying
 - **Amazon wins buy box X%**: you'll be competing with Amazon if it restocks.
 - **Extreme drop**: possible pricing glitch, or Amazon liquidating. Check the Keepa chart.
@@ -57,7 +82,8 @@ python -m pytest             # tests
 
 ## Keepa token use
 About 5 tokens per deal page plus about 3 tokens per product (1 with "Use buy box data"
-off). A default scan of 60 products costs about 190 tokens. Tune
+off). A default scan of 100 products costs about 320 tokens. Every 30 minutes that fits
+a 20 tokens/minute refill. Tune
 `max_products_per_scan` and the interval to fit your plan's refill rate.
 
 ## Layout
