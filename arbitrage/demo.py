@@ -71,6 +71,12 @@ class DemoKeepa:
         self.tokens_left -= (3 if buybox else 1) * (len(out))
         return out
 
+    def search(self, term: str, stats_days: int = 180) -> list[dict]:
+        self.tokens_left -= 10
+        p = self._fake(_asin(self.rng))
+        p["title"], p["brand"] = term, term.split()[0]
+        return [p]
+
     def close(self) -> None:
         pass
 

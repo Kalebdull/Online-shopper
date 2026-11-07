@@ -83,5 +83,11 @@ class KeepaClient:
                 out.extend(data.get("products") or [])
         return out
 
+    def search(self, term: str, stats_days: int = 180) -> list[dict]:
+        """Keyword product search: 10 tokens, up to 20 full products (with stats + history)."""
+        data = self._get("/search", {"domain": self.domain, "type": "product", "term": term,
+                                     "stats": stats_days, "history": 1, "days": stats_days})
+        return data.get("products") or []
+
     def close(self) -> None:
         self._http.close()

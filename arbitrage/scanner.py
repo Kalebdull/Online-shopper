@@ -186,6 +186,71 @@ class Scanner:
             self.running = False
             self.lock.release()
 
+    # --- deals from other stores ------------------------------------------
+    def run_web_scan(self, max_tokens: int | None = None) -> dict:
+        """Read deal feeds from around the web, match each to Amazon, verify with Keepa."""
+        from .sources import matcher, slickdeals
+        s = self.db.get_settings()
+        if not s.web_sources:
+            return {"status": "off"}
+        scan_id = self.db.start_scan("web")
+        client = make_client()
+        checked = found = searched = 0
+        skipped: Counter = Counter()
+        try:
+            deals = demo_store_deals() if config.DEMO_MODE else slickdeals.fetch()
+            tokens = (client.token_status() or {}).get("tokensLeft") or 0
+            budget = tokens if max_tokens is None else min(tokens, max_tokens)
+            fresh = [d for d in deals if not self.db.seen_recently(d["id"])]
+            for deal in fresh:
+                why = slickdeals.skip_reason(deal, s)
+                if why:
+                    skipped[why] += 1
+                    self.db.mark_seen(deal["id"], why)
+                    continue
+                if budget - SEARCH_COST < 10:
+                    break                                   # leave the rest for the next run
+                term = " ".join(sorted(deal["models"])) if deal["models"] else deal["query"]
+                products = client.search(term)
+                budget -= SEARCH_COST
+                searched += 1
+                product, how = matcher.match(deal, products)
+                if product is None:
+                    skipped["no exact Amazon match"] += 1
+                    self.db.mark_seen(deal["id"], how)
+                    continue
+                cost = deal["price"]
+                if not deal["free_shipping"] and cost < s.free_shipping_over:
+                    cost += s.store_shipping_estimate
+                info = parse_product(product)
+                play = evaluate(info, cost, s)
+                play["deal_title"], play["matched_by"] = deal["title"], how
+                if not deal["free_shipping"] and deal["price"] < s.free_shipping_over:
+                    play["flags"] = play.get("flags", []) + [f"Includes ${s.store_shipping_estimate:.2f} est. shipping"]
+                self.db.save_raw(product, "web", store=deal["store"], buy_url=deal["url"], lead_cost=cost)
+                self.db.upsert_play(play, "web", scan_id, buy_url=deal["url"], store=deal["store"])
+                self.db.mark_seen(deal["id"], "verified" if play["passes"] else "checked")
+                checked += 1
+                found += int(play["passes"])
+            self.last_tokens = client.tokens_left
+            top = ", ".join(f"{n} {w}" for w, n in skipped.most_common(4))
+            msg = (f"{found} verified from other stores. {len(deals)} deals read, {len(fresh)} new; "
+                   f"{searched} searched on Amazon, {checked} matched exactly ({top})")
+            self.db.finish_scan(scan_id, "ok", checked, found, client.tokens_left, msg)
+            return {"status": "ok", "found": found, "checked": checked, "message": msg}
+        except Exception as e:  # noqa: BLE001
+            log.exception("web scan failed")
+            self.db.finish_scan(scan_id, "error", checked, found, client.tokens_left, str(e))
+            return {"status": "error", "message": str(e)}
+        finally:
+            client.close()
+
+    def run_all(self) -> dict:
+        """Store deals first (they're the point), then Keepa price drops with what's left."""
+        web = self.run_web_scan()
+        deals = self.run_deal_scan()
+        return {"web": web, "amazon_deals": deals}
+
     # --- manual retail leads ------------------------------------------------
     def check_leads(self, leads: list[dict]) -> list[dict]:
         """leads: [{code: UPC/EAN/ASIN, cost: float, store?: str, url?: str}]"""
@@ -237,7 +302,7 @@ class Scanner:
         n = found = 0
         for r in self.db.raw_products():
             info = parse_product(r["data"])
-            if r["source"] == "leads":
+            if r["source"] in ("leads", "web"):
                 buy, store, url = r["lead_cost"], r["store"], r["buy_url"]
             else:
                 pt = r["price_type"] or AMAZON
@@ -249,6 +314,24 @@ class Scanner:
             n += 1
             found += int(play["passes"])
         return {"rescored": n, "verified": found}
+
+
+SEARCH_COST = 10
+
+
+def demo_store_deals() -> list[dict]:
+    from .sources.slickdeals import clean_title, model_numbers
+    rows = [("Hydro Flask 32 oz Wide Mouth Bottle $24.97 + Free S&H", "Target"),
+            ("LEGO Classic Creative Bricks Set 11016 $19.99", "Walmart"),
+            ("Refurbished: Some Drone $99 + Free S&H", "Woot"),
+            ("Anker USB-C Charger 65W $22 + Free Shipping", "Best Buy")]
+    out = []
+    for i, (t, store) in enumerate(rows):
+        price = float(t.split("$")[1].split()[0])
+        out.append({"id": f"demo-{i}", "title": t, "query": clean_title(t), "price": price,
+                    "free_shipping": "Free" in t, "store": store, "url": "https://slickdeals.net/",
+                    "models": model_numbers(t), "feed": "demo", "published": None})
+    return out
 
 
 def parse_leads_csv(text: str) -> list[dict]:
@@ -274,5 +357,5 @@ def scheduler_loop(scanner: Scanner, stop: threading.Event) -> None:
         due = (last["started_at"] + interval) if last else time.time()
         scanner.next_run_at = due if s.auto_scan else None
         if s.auto_scan and time.time() >= due:
-            scanner.run_deal_scan()
+            scanner.run_all()
         stop.wait(30)

@@ -89,7 +89,7 @@ def update_play(source: str, asin: str, body: PlayUpdate):
 def scan(background: BackgroundTasks):
     if scanner.running:
         return {"status": "busy"}
-    background.add_task(scanner.run_deal_scan)
+    background.add_task(scanner.run_all)
     return {"status": "started"}
 
 

@@ -101,6 +101,11 @@ class Settings:
     default_referral_pct: float = 15.0
     resale_haircut: float = 0.05     # assume you sell 5% under the 90-day buy box
 
+    # --- deals from other stores (Slickdeals feeds) ---
+    web_sources: bool = False   # one-time sale prices; off by default (you want repeatable flips)
+    store_shipping_estimate: float = 5.99   # added when a deal doesn't say free shipping...
+    free_shipping_over: float = 35.0        # ...and costs less than this
+
     # --- automation ---
     auto_scan: bool = True
     scan_interval_minutes: int = 15  # Keepa tokens expire after 60 min: spend them often

@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS raw_products (
     asin TEXT PRIMARY KEY, source TEXT, price_type INTEGER, store TEXT, buy_url TEXT,
     lead_cost REAL, data TEXT NOT NULL, fetched_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS seen_deals (id TEXT PRIMARY KEY, seen_at REAL NOT NULL, outcome TEXT);
 CREATE INDEX IF NOT EXISTS plays_score ON plays(passes, score DESC);
 """
 
@@ -151,6 +152,13 @@ class DB:
         for r in rows:
             r["data"] = json.loads(r["data"])
         return rows
+
+    def seen_recently(self, deal_id: str, days: float = 7) -> bool:
+        return bool(self._all("SELECT 1 FROM seen_deals WHERE id=? AND seen_at>?",
+                              (deal_id, time.time() - days * 86400)))
+
+    def mark_seen(self, deal_id: str, outcome: str) -> None:
+        self._exec("INSERT OR REPLACE INTO seen_deals VALUES (?,?,?)", (deal_id, time.time(), outcome))
 
     def summary(self) -> dict:
         row = self._all("""SELECT COUNT(*) n, AVG(roi) avg_roi, SUM(profit) total_profit,

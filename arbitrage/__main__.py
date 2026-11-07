@@ -5,7 +5,7 @@ import json
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="arbitrage")
-    ap.add_argument("cmd", nargs="?", default="serve", choices=["serve", "scan", "tokens", "export", "rescore"])
+    ap.add_argument("cmd", nargs="?", default="serve", choices=["serve", "scan", "web", "tokens", "export", "rescore"])
     ap.add_argument("--out", default="data/export")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
@@ -25,10 +25,13 @@ def main() -> None:
     if a.cmd == "rescore":
         print(json.dumps(sc.rescore(), indent=2))
         return
+    if a.cmd == "web":
+        print(json.dumps(sc.run_web_scan(), indent=2))
+        return
     if a.cmd == "tokens":
         print(json.dumps(sc.tokens(), indent=2))
     else:
-        print(json.dumps(sc.run_deal_scan(), indent=2))
+        print(json.dumps(sc.run_all(), indent=2))
         for p in sc.db.plays(limit=10):
             print(f"{p['score']:5.1f}  {p['asin']}  buy ${p['buy_price']:.2f} -> ${p['sell_price']:.2f}  "
                   f"profit ${p['profit']:.2f} ({p['roi']:.0%})  {p['title'][:60]}")
